@@ -4,23 +4,20 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.utils import weight_norm, spectral_norm
+import yaml
+from munch import Munch
+from torch.nn.utils import spectral_norm, weight_norm
 
-from Utils.ASR.models import ASRCNN
-from Utils.JDC.model import JDCNet
-
-from Modules.diffusion.sampler import KDiffusion, LogNormalDistribution
-from Modules.diffusion.modules import Transformer1d, StyleTransformer1d
 from Modules.diffusion.diffusion import AudioDiffusionConditional
-
+from Modules.diffusion.modules import StyleTransformer1d, Transformer1d
+from Modules.diffusion.sampler import KDiffusion, LogNormalDistribution
 from Modules.discriminators import (
     MultiPeriodDiscriminator,
     MultiResSpecDiscriminator,
     WavLMDiscriminator,
 )
-
-from munch import Munch
-import yaml
+from Utils.ASR.models import ASRCNN
+from Utils.JDC.model import JDCNet
 
 
 class LearnedDownSample(nn.Module):

@@ -1,8 +1,10 @@
 import math
+
 import torch
-from torch import nn
 import torch.nn.functional as F
-from .layers import MFCC, Attention, LinearNorm, ConvNorm, ConvBlock
+from torch import nn
+
+from .layers import MFCC, Attention, ConvBlock, ConvNorm, LinearNorm
 
 
 class ASRCNN(nn.Module):

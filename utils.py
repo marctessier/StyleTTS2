@@ -1,8 +1,8 @@
-from monotonic_align import maximum_path
-from monotonic_align.core import maximum_path_c
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
+from monotonic_align import maximum_path
+from monotonic_align.core import maximum_path_c
 from munch import Munch
 
 

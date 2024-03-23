@@ -1,7 +1,7 @@
 from torch import Tensor, nn
 
+from .sampler import LinearSchedule, UniformDistribution, VSampler
 from .utils import groupby
-from .sampler import UniformDistribution, LinearSchedule, VSampler
 
 """
 Diffusion Classes (generic for 1d data)
