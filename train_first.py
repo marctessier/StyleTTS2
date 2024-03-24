@@ -1,4 +1,3 @@
-import logging
 import os
 import random
 import shutil
@@ -10,7 +9,6 @@ import torch
 import torch.nn.functional as F
 import yaml
 from accelerate import Accelerator, DistributedDataParallelKwargs
-from accelerate.logging import get_logger
 from monotonic_align import mask_from_lens
 from munch import Munch
 from torch.utils.tensorboard import SummaryWriter
@@ -27,34 +25,29 @@ from utils import (
     log_print,
     maximum_path,
     recursive_munch,
+    setup_logging,
 )
-
-logger = get_logger(__name__, log_level="DEBUG")
 
 
 @click.command()
 @click.option("-p", "--config_path", default="Configs/config.yml", type=str)
 def main(config_path):
-    config = yaml.safe_load(open(config_path))
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
 
+    # Set up logging
     log_dir = config["log_dir"]
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir, exist_ok=True)
+    logger = setup_logging(log_dir, __name__)
+
     shutil.copy(config_path, os.path.join(log_dir, os.path.basename(config_path)))
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+
+    ## Accelerate
     accelerator = Accelerator(
         project_dir=log_dir, split_batches=True, kwargs_handlers=[ddp_kwargs]
     )
     if accelerator.is_main_process:
         writer = SummaryWriter(log_dir + "/tensorboard")
-
-    # write logs
-    file_handler = logging.FileHandler(os.path.join(log_dir, "train.log"))
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(
-        logging.Formatter("%(levelname)s:%(asctime)s: %(message)s")
-    )
-    logger.logger.addHandler(file_handler)
 
     batch_size = config.get("batch_size", 10)
     device = accelerator.device
@@ -75,7 +68,6 @@ def main(config_path):
 
     # load data
     train_list, val_list = get_data_path_list(train_path, val_path)
-
     train_dataloader = build_dataloader(
         train_list,
         root_path,

@@ -1,6 +1,10 @@
+import logging
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from accelerate.logging import get_logger
 from monotonic_align import maximum_path
 from monotonic_align.core import maximum_path_c
 from munch import Munch
@@ -76,6 +80,20 @@ def recursive_munch(d):
         return [recursive_munch(v) for v in d]
     else:
         return d
+
+
+def setup_logging(log_dir, logger_name, log_level="DEBUG"):
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+
+    logger = get_logger(logger_name, log_level)
+    file_handler = logging.FileHandler(os.path.join(log_dir, "train.log"))
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(
+        logging.Formatter("%(levelname)s:%(asctime)s: %(message)s")
+    )
+    logger.logger.addHandler(file_handler)
+    return logger
 
 
 def log_print(message, logger):

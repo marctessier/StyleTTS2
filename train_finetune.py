@@ -1,6 +1,5 @@
 # load packages
 import copy
-import logging
 import os
 import random
 import shutil
@@ -27,6 +26,7 @@ from utils import (
     log_norm,
     maximum_path,
     recursive_munch,
+    setup_logging,
 )
 from Utils.PLBERT.util import load_plbert
 
@@ -40,31 +40,21 @@ class MyDataParallel(torch.nn.DataParallel):
             return getattr(self.module, name)
 
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-handler.setLevel(logging.DEBUG)
-logger.addHandler(handler)
-
-
 @click.command()
 @click.option("-p", "--config_path", default="Configs/config_ft.yml", type=str)
 def main(config_path):
-    config = yaml.safe_load(open(config_path))
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
 
+    # Set up logging
     log_dir = config["log_dir"]
+    logger = setup_logging(log_dir, __name__)
+
     if not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
+
     shutil.copy(config_path, os.path.join(log_dir, os.path.basename(config_path)))
     writer = SummaryWriter(log_dir + "/tensorboard")
-
-    # write logs
-    file_handler = logging.FileHandler(os.path.join(log_dir, "train.log"))
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(
-        logging.Formatter("%(levelname)s:%(asctime)s: %(message)s")
-    )
-    logger.addHandler(file_handler)
 
     batch_size = config.get("batch_size", 10)
 
