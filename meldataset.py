@@ -1,5 +1,4 @@
 # coding: utf-8
-import logging
 import os
 import random
 
@@ -10,10 +9,6 @@ import soundfile as sf
 import torch
 import torchaudio
 from torch.utils.data import DataLoader
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
 
 _pad = "$"
 _punctuation = ';:,.!?¡¿—…"«»“” '
