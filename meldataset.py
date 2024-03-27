@@ -1,31 +1,29 @@
 # coding: utf-8
 import os
-import random
 
 import librosa
 import numpy as np
 import pandas as pd
 import soundfile as sf
 import torch
-import torchaudio
 from torch.utils.data import DataLoader
-
-_pad = "$"
-_punctuation = ';:,.!?¡¿—…"«»“” '
-_letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-_letters_ipa = "ɑɐɒæɓʙβɔɕçɗɖðʤəɘɚɛɜɝɞɟʄɡɠɢʛɦɧħɥʜɨɪʝɭɬɫɮʟɱɯɰŋɳɲɴøɵɸθœɶʘɹɺɾɻʀʁɽʂʃʈʧʉʊʋⱱʌɣɤʍχʎʏʑʐʒʔʡʕʢǀǁǂǃˈˌːˑʼʴʰʱʲʷˠˤ˞↓↑→↗↘'̩'ᵻ"
-
-# Export all symbols:
-symbols = [_pad] + list(_punctuation) + list(_letters) + list(_letters_ipa)
-
-dicts = {}
-for i in range(len((symbols))):
-    dicts[symbols[i]] = i
+from torchaudio.transforms import MelSpectrogram
 
 
 class TextCleaner:
+    _pad = "$"
+    _punctuation = ';:,.!?¡¿—…"«»“” '
+    _letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    _letters_ipa = "ɑɐɒæɓʙβɔɕçɗɖðʤəɘɚɛɜɝɞɟʄɡɠɢʛɦɧħɥʜɨɪʝɭɬɫɮʟɱɯɰŋɳɲɴøɵɸθœɶʘɹɺɾɻʀʁɽʂʃʈʧʉʊʋⱱʌɣɤʍχʎʏʑʐʒʔʡʕʢǀǁǂǃˈˌːˑʼʴʰʱʲʷˠˤ˞↓↑→↗↘'̩'ᵻ"
+
     def __init__(self, dummy=None):
-        self.word_index_dictionary = dicts
+        symbols = (
+            [self._pad]
+            + list(self._punctuation)
+            + list(self._letters)
+            + list(self._letters_ipa)
+        )
+        self.word_index_dictionary = {symbol: i for i, symbol in enumerate(symbols)}
 
     def __call__(self, text):
         indexes = []
@@ -35,26 +33,6 @@ class TextCleaner:
             except KeyError:
                 print(text)
         return indexes
-
-
-np.random.seed(1)
-random.seed(1)
-SPECT_PARAMS = {"n_fft": 2048, "win_length": 1200, "hop_length": 300}
-MEL_PARAMS = {
-    "n_mels": 80,
-}
-
-to_mel = torchaudio.transforms.MelSpectrogram(
-    n_mels=80, n_fft=2048, win_length=1200, hop_length=300
-)
-mean, std = -4, 4
-
-
-def preprocess(wave):
-    wave_tensor = torch.from_numpy(wave).float()
-    mel_tensor = to_mel(wave_tensor)
-    mel_tensor = (torch.log(1e-5 + mel_tensor.unsqueeze(0)) - mean) / std
-    return mel_tensor
 
 
 class FilePathDataset(torch.utils.data.Dataset):
@@ -68,14 +46,13 @@ class FilePathDataset(torch.utils.data.Dataset):
         OOD_data="Data/OOD_texts.txt",
         min_length=50,
     ):
+        np.random.seed(1)
         _data_list = [line.strip().split("|") for line in data_list]
         self.data_list = [data if len(data) == 3 else (*data, 0) for data in _data_list]
         self.text_cleaner = TextCleaner()
         self.sr = sr
 
         self.df = pd.DataFrame(self.data_list)
-
-        self.to_melspec = torchaudio.transforms.MelSpectrogram(**MEL_PARAMS)
 
         self.mean, self.std = -4, 4
         self.data_augmentation = data_augmentation and (not validation)
@@ -98,7 +75,7 @@ class FilePathDataset(torch.utils.data.Dataset):
 
         wave, text_tensor, speaker_id = self._load_tensor(data)
 
-        mel_tensor = preprocess(wave).squeeze()
+        mel_tensor = self._preprocess(wave).squeeze()
 
         acoustic_feature = mel_tensor.squeeze()
         length_feature = acoustic_feature.size(1)
@@ -156,7 +133,7 @@ class FilePathDataset(torch.utils.data.Dataset):
 
     def _load_data(self, data):
         wave, text_tensor, speaker_id = self._load_tensor(data)
-        mel_tensor = preprocess(wave).squeeze()
+        mel_tensor = self._preprocess(wave).squeeze()
 
         mel_length = mel_tensor.size(1)
         if mel_length > self.max_mel_length:
@@ -167,13 +144,15 @@ class FilePathDataset(torch.utils.data.Dataset):
 
         return mel_tensor, speaker_id
 
+    def _preprocess(self, wave):
+        wave_tensor = torch.from_numpy(wave).float()
+        to_mel = MelSpectrogram(n_mels=80, n_fft=2048, win_length=1200, hop_length=300)
+        mel_tensor = to_mel(wave_tensor)
+        mel_tensor = (torch.log(1e-5 + mel_tensor.unsqueeze(0)) - self.mean) / self.std
+        return mel_tensor
+
 
 class Collater(object):
-    """
-    Args:
-      adaptive_batch_size (bool): if true, decrease batch size when long data comes.
-    """
-
     def __init__(self, return_wave=False):
         self.text_pad_index = 0
         self.min_mel_length = 192
@@ -181,7 +160,6 @@ class Collater(object):
         self.return_wave = return_wave
 
     def __call__(self, batch):
-        # batch[0] = wave, mel, text, f0, speakerid
         batch_size = len(batch)
 
         # sort by mel length

@@ -27,6 +27,7 @@ from utils import (
     recursive_munch,
     setup_logging,
 )
+from Utils.PLBERT.util import load_plbert
 
 
 @click.command()
@@ -40,31 +41,30 @@ def main(config_path):
     logger = setup_logging(log_dir, __name__)
 
     shutil.copy(config_path, os.path.join(log_dir, os.path.basename(config_path)))
-    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
 
     ## Accelerate
+    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     accelerator = Accelerator(
         project_dir=log_dir, split_batches=True, kwargs_handlers=[ddp_kwargs]
     )
     if accelerator.is_main_process:
         writer = SummaryWriter(log_dir + "/tensorboard")
 
-    batch_size = config.get("batch_size", 10)
     device = accelerator.device
 
+    # Read in configs
+    batch_size = config.get("batch_size", 10)
+    data_params = config.get("data_params", None)
     epochs = config.get("epochs_1st", 200)
     log_interval = config.get("log_interval", 10)
+    max_len = config.get("max_len", 200)
+    min_length = data_params["min_length"]
+    OOD_data = data_params["OOD_data"]
+    root_path = data_params["root_path"]
     save_frequency = config.get("save_freq", 2)
-
-    data_params = config.get("data_params", None)
     sr = config["preprocess_params"].get("sr", 24000)
     train_path = data_params["train_data"]
     val_path = data_params["val_data"]
-    root_path = data_params["root_path"]
-    min_length = data_params["min_length"]
-    OOD_data = data_params["OOD_data"]
-
-    max_len = config.get("max_len", 200)
 
     # load data
     train_list, val_list = get_data_path_list(train_path, val_path)
@@ -102,8 +102,6 @@ def main(config_path):
         pitch_extractor = load_F0_models(F0_path)
 
         # load BERT model
-        from Utils.PLBERT.util import load_plbert
-
         BERT_path = config.get("PLBERT_dir", False)
         plbert = load_plbert(BERT_path)
 
