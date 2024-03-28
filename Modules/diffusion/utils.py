@@ -1,12 +1,9 @@
 from functools import reduce
 from inspect import isfunction
-from math import ceil, floor, log2, pi
+from math import ceil, floor, log2
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import torch
-import torch.nn.functional as F
-from einops import rearrange
-from torch import Generator, Tensor
 from typing_extensions import TypeGuard
 
 T = TypeVar("T")
@@ -44,11 +41,12 @@ def prod(vals: Sequence[int]) -> int:
 
 def closest_power_2(x: float) -> int:
     exponent = log2(x)
-    distance_fn = lambda z: abs(x - 2 ** z)  # noqa
+    distance_fn = lambda z: abs(x - 2**z)  # noqa
     exponent_closest = min((floor(exponent), ceil(exponent)), key=distance_fn)
     return 2 ** int(exponent_closest)
 
-def rand_bool(shape, proba, device = None):
+
+def rand_bool(shape, proba, device=None):
     if proba == 1:
         return torch.ones(shape, device=device, dtype=torch.bool)
     elif proba == 0:
