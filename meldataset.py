@@ -261,7 +261,7 @@ def get_dataloaders(
         device=device
     )
 
-    return train_dataloader, val_dataloader
+    return train_dataloader, val_dataloader, train_list
 
 def build_dataloader(
     path_list,

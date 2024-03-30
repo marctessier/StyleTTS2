@@ -58,9 +58,13 @@ def main(config_path):
     data_params = config.get("data_params", None)
     save_frequency = config.get("save_freq", 2)
     sr = config["preprocess_params"].get("sr", 24000)
+ 
+    best_loss = float("inf")  # best test loss
+    loss_params = Munch(config["loss_params"])
+    TMA_epoch = loss_params.TMA_epoch
 
     # Load the datasets
-    train_dataloader, val_dataloader = get_dataloaders(
+    train_dataloader, val_dataloader, train_list = get_dataloaders(
         dataset_config=data_params,
         batch_size=batch_size,
         num_workers=2,
@@ -101,7 +105,8 @@ def main(config_path):
     )
 
     # Prepare for accelerate training
-    model = {k: accelerator.prepare(v) for k, v in model.items()}
+    for k in model:
+        model[k] = accelerator.prepare(model[k])
     train_dataloader, val_dataloader = accelerator.prepare(
         train_dataloader, val_dataloader
     )
