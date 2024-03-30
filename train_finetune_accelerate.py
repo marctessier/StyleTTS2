@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from losses import DiscriminatorLoss, GeneratorLoss, MultiResolutionSTFTLoss, WavLMLoss
 from meldataset import get_dataloaders
-from models import build_model, load_ASR_models, load_checkpoint, load_F0_models
+from models import build_model,load_checkpoint, load_pretrained_models
 from Modules.diffusion.sampler import ADPM2Sampler, DiffusionSampler, KarrasSchedule
 from Modules.slmadv import SLMAdversarialLoss
 from optimizers import build_optimizer
@@ -27,7 +27,6 @@ from utils import (
     recursive_munch,
     setup_logging,
 )
-from Utils.PLBERT.util import load_plbert
 
 accelerator = Accelerator()
 
@@ -77,18 +76,8 @@ def main(config_path):
         device=device
     )
 
-    # load pretrained ASR model
-    ASR_config = config.get("ASR_config", False)
-    ASR_path = config.get("ASR_path", False)
-    text_aligner = load_ASR_models(ASR_path, ASR_config)
-
-    # load pretrained F0 model
-    F0_path = config.get("F0_path", False)
-    pitch_extractor = load_F0_models(F0_path)
-
-    # load PL-BERT model
-    BERT_path = config.get("PLBERT_dir", False)
-    plbert = load_plbert(BERT_path)
+   # load pretrained models
+    text_aligner, pitch_extractor, plbert = load_pretrained_models(config)
 
     # build model
     model_params = recursive_munch(config["model_params"])

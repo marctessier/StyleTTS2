@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from losses import DiscriminatorLoss, GeneratorLoss, MultiResolutionSTFTLoss, WavLMLoss
 from meldataset import get_dataloaders
-from models import build_model, load_ASR_models, load_checkpoint, load_F0_models
+from models import build_model, load_checkpoint, load_pretrained_models
 from optimizers import build_optimizer
 from utils import (
     get_image,
@@ -26,8 +26,6 @@ from utils import (
     recursive_munch,
     setup_logging,
 )
-from Utils.PLBERT.util import load_plbert
-
 
 @click.command()
 @click.option("-p", "--config_path", default="Configs/config.yml", type=str)
@@ -58,8 +56,6 @@ def main(config_path):
     data_params = config.get("data_params", None)
     save_frequency = config.get("save_freq", 2)
     sr = config["preprocess_params"].get("sr", 24000)
- 
-    best_loss = float("inf")  # best test loss
     loss_params = Munch(config["loss_params"])
     TMA_epoch = loss_params.TMA_epoch
 
@@ -73,18 +69,7 @@ def main(config_path):
 
     # Load pretrained models
     with accelerator.main_process_first():
-        # load pretrained ASR model
-        ASR_config = config.get("ASR_config", False)
-        ASR_path = config.get("ASR_path", False)
-        text_aligner = load_ASR_models(ASR_path, ASR_config)
-
-        # load pretrained F0 model
-        F0_path = config.get("F0_path", False)
-        pitch_extractor = load_F0_models(F0_path)
-
-        # load BERT model
-        BERT_path = config.get("PLBERT_dir", False)
-        plbert = load_plbert(BERT_path)
+        text_aligner, pitch_extractor, plbert = load_pretrained_models(config)
 
     # Build model, optimizer, scheduler
     model_params = recursive_munch(config["model_params"])
@@ -141,6 +126,7 @@ def main(config_path):
     dl = DiscriminatorLoss(model.mpd, model.msd).to(device)
     wl = WavLMLoss(model_params.slm.model, model.wd, sr, model_params.slm.sr).to(device)
 
+    best_loss = float("inf")
     for epoch in range(start_epoch, epochs):
         running_loss = 0
         start_time = time.time()
