@@ -14,11 +14,10 @@ from munch import Munch
 from torch.utils.tensorboard import SummaryWriter
 
 from losses import DiscriminatorLoss, GeneratorLoss, MultiResolutionSTFTLoss, WavLMLoss
-from meldataset import build_dataloader
+from meldataset import get_dataloaders
 from models import build_model, load_ASR_models, load_checkpoint, load_F0_models
 from optimizers import build_optimizer
 from utils import (
-    get_data_path_list,
     get_image,
     length_to_mask,
     log_norm,
@@ -49,48 +48,26 @@ def main(config_path):
     )
     if accelerator.is_main_process:
         writer = SummaryWriter(log_dir + "/tensorboard")
-
     device = accelerator.device
 
     # Read in configs
     batch_size = config.get("batch_size", 10)
-    data_params = config.get("data_params", None)
     epochs = config.get("epochs_1st", 200)
     log_interval = config.get("log_interval", 10)
     max_len = config.get("max_len", 200)
-    min_length = data_params["min_length"]
-    OOD_data = data_params["OOD_data"]
-    root_path = data_params["root_path"]
+    data_params = config.get("data_params", None)
     save_frequency = config.get("save_freq", 2)
     sr = config["preprocess_params"].get("sr", 24000)
-    train_path = data_params["train_data"]
-    val_path = data_params["val_data"]
 
-    # load data
-    train_list, val_list = get_data_path_list(train_path, val_path)
-    train_dataloader = build_dataloader(
-        train_list,
-        root_path,
-        OOD_data=OOD_data,
-        min_length=min_length,
+    # Load the datasets
+    train_dataloader, val_dataloader = get_dataloaders(
+        dataset_config=data_params,
         batch_size=batch_size,
         num_workers=2,
-        dataset_config={},
-        device=device,
+        device=device
     )
 
-    val_dataloader = build_dataloader(
-        val_list,
-        root_path,
-        OOD_data=OOD_data,
-        min_length=min_length,
-        batch_size=batch_size,
-        validation=True,
-        num_workers=0,
-        device=device,
-        dataset_config={},
-    )
-
+    # Load pretrained models
     with accelerator.main_process_first():
         # load pretrained ASR model
         ASR_config = config.get("ASR_config", False)
@@ -105,6 +82,11 @@ def main(config_path):
         BERT_path = config.get("PLBERT_dir", False)
         plbert = load_plbert(BERT_path)
 
+    # Build model, optimizer, scheduler
+    model_params = recursive_munch(config["model_params"])
+    multispeaker = model_params.multispeaker
+    model = build_model(model_params, text_aligner, pitch_extractor, plbert)
+
     scheduler_params = {
         "max_lr": float(config["optimizer_params"].get("lr", 1e-4)),
         "pct_start": float(config["optimizer_params"].get("pct_start", 0.0)),
@@ -112,33 +94,23 @@ def main(config_path):
         "steps_per_epoch": len(train_dataloader),
     }
 
-    model_params = recursive_munch(config["model_params"])
-    multispeaker = model_params.multispeaker
-    model = build_model(model_params, text_aligner, pitch_extractor, plbert)
-
-    best_loss = float("inf")  # best test loss
-    loss_params = Munch(config["loss_params"])
-    TMA_epoch = loss_params.TMA_epoch
-
-    for k in model:
-        model[k] = accelerator.prepare(model[k])
-
-    train_dataloader, val_dataloader = accelerator.prepare(
-        train_dataloader, val_dataloader
-    )
-
-    _ = [model[key].to(device) for key in model]
-
-    # initialize optimizers after preparing models for compatibility with FSDP
     optimizer = build_optimizer(
         {key: model[key].parameters() for key in model},
         scheduler_params_dict={key: scheduler_params.copy() for key in model},
         lr=float(config["optimizer_params"].get("lr", 1e-4)),
     )
 
+    # Prepare for accelerate training
+    model = {k: accelerator.prepare(v) for k, v in model.items()}
+    train_dataloader, val_dataloader = accelerator.prepare(
+        train_dataloader, val_dataloader
+    )
     for k, v in optimizer.optimizers.items():
         optimizer.optimizers[k] = accelerator.prepare(optimizer.optimizers[k])
         optimizer.schedulers[k] = accelerator.prepare(optimizer.schedulers[k])
+
+    # Move model to device for training
+    _ = [model[key].to(device) for key in model]
 
     with accelerator.main_process_first():
         if config.get("pretrained_model", "") != "":

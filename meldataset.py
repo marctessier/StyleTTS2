@@ -9,6 +9,8 @@ import torch
 from torch.utils.data import DataLoader
 from torchaudio.transforms import MelSpectrogram
 
+from utils import get_data_path_list
+
 
 class TextCleaner:
     _pad = "$"
@@ -223,6 +225,43 @@ class Collater(object):
             ref_mels,
         )
 
+def get_dataloaders(
+    dataset_config,
+    batch_size,
+    num_workers,
+    device
+):
+    train_path = dataset_config["train_data"]
+    val_path = dataset_config["val_data"]
+    min_length = dataset_config["min_length"]
+    OOD_data = dataset_config["OOD_data"]
+    root_path = dataset_config["root_path"]
+
+    train_list, val_list = get_data_path_list(train_path, val_path)
+
+    train_dataloader = build_dataloader(
+        train_list,
+        root_path,
+        OOD_data=OOD_data,
+        min_length=min_length,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        dataset_config={},
+        device=device
+    )
+
+    val_dataloader = build_dataloader(
+        val_list,
+        root_path,
+        OOD_data=OOD_data,
+        min_length=min_length,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        dataset_config={},
+        device=device
+    )
+
+    return train_dataloader, val_dataloader
 
 def build_dataloader(
     path_list,

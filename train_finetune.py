@@ -15,13 +15,12 @@ from munch import Munch
 from torch.utils.tensorboard import SummaryWriter
 
 from losses import DiscriminatorLoss, GeneratorLoss, MultiResolutionSTFTLoss, WavLMLoss
-from meldataset import build_dataloader
+from meldataset import get_dataloaders
 from models import build_model, load_ASR_models, load_checkpoint, load_F0_models
 from Modules.diffusion.sampler import ADPM2Sampler, DiffusionSampler, KarrasSchedule
 from Modules.slmadv import SLMAdversarialLoss
 from optimizers import build_optimizer
 from utils import (
-    get_data_path_list,
     length_to_mask,
     log_norm,
     maximum_path,
@@ -57,51 +56,24 @@ def main(config_path):
     writer = SummaryWriter(log_dir + "/tensorboard")
 
     batch_size = config.get("batch_size", 10)
-
     epochs = config.get("epochs", 200)
     save_freq = config.get("save_freq", 2)
     log_interval = config.get("log_interval", 10)
-
     data_params = config.get("data_params", None)
     sr = config["preprocess_params"].get("sr", 24000)
-    train_path = data_params["train_data"]
-    val_path = data_params["val_data"]
-    root_path = data_params["root_path"]
-    min_length = data_params["min_length"]
-    OOD_data = data_params["OOD_data"]
-
     max_len = config.get("max_len", 200)
-
     loss_params = Munch(config["loss_params"])
     diff_epoch = loss_params.diff_epoch
     joint_epoch = loss_params.joint_epoch
-
     optimizer_params = Munch(config["optimizer_params"])
-
-    train_list, val_list = get_data_path_list(train_path, val_path)
     device = "cuda"
 
-    train_dataloader = build_dataloader(
-        train_list,
-        root_path,
-        OOD_data=OOD_data,
-        min_length=min_length,
+    # Load the datasets
+    train_dataloader, val_dataloader = get_dataloaders(
+        dataset_config=data_params,
         batch_size=batch_size,
         num_workers=2,
-        dataset_config={},
-        device=device,
-    )
-
-    val_dataloader = build_dataloader(
-        val_list,
-        root_path,
-        OOD_data=OOD_data,
-        min_length=min_length,
-        batch_size=batch_size,
-        validation=True,
-        num_workers=0,
-        device=device,
-        dataset_config={},
+        device=device
     )
 
     # load pretrained ASR model
