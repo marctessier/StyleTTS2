@@ -90,16 +90,14 @@ def main(config_path):
     )
 
     # Prepare for accelerate training
-    model = {k: accelerator.prepare(v) for k, v in model.items()}
+    for k in model:
+        model[k] = accelerator.prepare(model[k])
     train_dataloader, val_dataloader = accelerator.prepare(
         train_dataloader, val_dataloader
     )
     for k, v in optimizer.optimizers.items():
         optimizer.optimizers[k] = accelerator.prepare(optimizer.optimizers[k])
         optimizer.schedulers[k] = accelerator.prepare(optimizer.schedulers[k])
-
-    # Move model to device for training
-    _ = [model[key].to(device) for key in model]
 
     with accelerator.main_process_first():
         if config.get("pretrained_model", "") != "":
