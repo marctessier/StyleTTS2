@@ -39,7 +39,7 @@ def main(config_path):
 
     shutil.copy(config_path, os.path.join(log_dir, os.path.basename(config_path)))
 
-    ## Accelerate
+    # Initialize Accelerate
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     accelerator = Accelerator(
         project_dir=log_dir, split_batches=True, kwargs_handlers=[ddp_kwargs]
@@ -71,7 +71,7 @@ def main(config_path):
     with accelerator.main_process_first():
         text_aligner, pitch_extractor, plbert = load_pretrained_models(config)
 
-    # Build model, optimizer, scheduler
+    # Build model and optimizer
     model_params = recursive_munch(config["model_params"])
     multispeaker = model_params.multispeaker
     model = build_model(model_params, text_aligner, pitch_extractor, plbert)
@@ -99,6 +99,7 @@ def main(config_path):
         optimizer.optimizers[k] = accelerator.prepare(optimizer.optimizers[k])
         optimizer.schedulers[k] = accelerator.prepare(optimizer.schedulers[k])
 
+    # If resuming training, load checkpoint
     with accelerator.main_process_first():
         if config.get("pretrained_model", "") != "":
             model, optimizer, start_epoch, iters = load_checkpoint(
