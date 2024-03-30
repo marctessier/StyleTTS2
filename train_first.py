@@ -90,8 +90,7 @@ def main(config_path):
     )
 
     # Prepare for accelerate training
-    for k in model:
-        model[k] = accelerator.prepare(model[k])
+    model = {k: accelerator.prepare(v) for k, v in model.items()}
     train_dataloader, val_dataloader = accelerator.prepare(
         train_dataloader, val_dataloader
     )
