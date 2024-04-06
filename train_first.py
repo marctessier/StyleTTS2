@@ -1,6 +1,5 @@
 import os
 import random
-import shutil
 import time
 
 import click
@@ -18,26 +17,20 @@ from meldataset import get_dataloaders
 from models import build_model, load_checkpoint, load_pretrained_models
 from optimizers import build_optimizer
 from utils import (
+    configure_environment,
     get_image,
     length_to_mask,
     log_norm,
     log_print,
     maximum_path,
-    recursive_munch,
-    setup_logging,
+    recursive_munch
 )
 
 @click.command()
 @click.option("-p", "--config_path", default="Configs/config.yml", type=str)
 def main(config_path):
-    with open(config_path, "r") as file:
-        config = yaml.safe_load(file)
-
-    # Set up logging
-    log_dir = config["log_dir"]
-    logger = setup_logging(log_dir, __name__)
-
-    shutil.copy(config_path, os.path.join(log_dir, os.path.basename(config_path)))
+    # Load config and set up environment
+    config, logger, log_dir = configure_environment(config_path)
 
     # Initialize Accelerate
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
@@ -112,18 +105,18 @@ def main(config_path):
             start_epoch = 0
             iters = 0
 
-    # in case not distributed
-    try:
+    if hasattr(model.text_aligner, "module"):
         n_down = model.text_aligner.module.n_down
-    except Exception:
+    else:
         n_down = model.text_aligner.n_down
 
-    # wrapped losses for compatibility with mixed precision
+    # Initialize losses
     stft_loss = MultiResolutionSTFTLoss().to(device)
-    gl = GeneratorLoss(model.mpd, model.msd).to(device)
-    dl = DiscriminatorLoss(model.mpd, model.msd).to(device)
-    wl = WavLMLoss(model_params.slm.model, model.wd, sr, model_params.slm.sr).to(device)
+    generator_loss = GeneratorLoss(model.mpd, model.msd).to(device)
+    discriminator_loss = DiscriminatorLoss(model.mpd, model.msd).to(device)
+    wavlm_loss = WavLMLoss(model_params.slm.model, model.wd, sr, model_params.slm.sr).to(device)
 
+    # Train model
     best_loss = float("inf")
     for epoch in range(start_epoch, epochs):
         running_loss = 0
@@ -238,7 +231,7 @@ def main(config_path):
 
             if epoch >= TMA_epoch:
                 optimizer.zero_grad()
-                d_loss = dl(wav.detach().unsqueeze(1).float(), y_rec.detach()).mean()
+                d_loss = discriminator_loss(wav.detach().unsqueeze(1).float(), y_rec.detach()).mean()
                 accelerator.backward(d_loss)
                 optimizer.step("msd")
                 optimizer.step("mpd")
@@ -261,8 +254,8 @@ def main(config_path):
 
                 loss_mono = F.l1_loss(s2s_attn, s2s_attn_mono) * 10
 
-                loss_gen_all = gl(wav.detach().unsqueeze(1).float(), y_rec).mean()
-                loss_slm = wl(wav.detach(), y_rec).mean()
+                loss_gen_all = generator_loss(wav.detach().unsqueeze(1).float(), y_rec).mean()
+                loss_slm = wavlm_loss(wav.detach(), y_rec).mean()
 
                 g_loss = (
                     loss_params.lambda_mel * loss_mel

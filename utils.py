@@ -1,5 +1,7 @@
 import logging
 import os
+import shutil
+import yaml
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -82,7 +84,7 @@ def recursive_munch(d):
         return d
 
 
-def setup_logging(log_dir, logger_name, log_level="DEBUG"):
+def _setup_logging(log_dir, logger_name, log_level="DEBUG"):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
 
@@ -95,6 +97,21 @@ def setup_logging(log_dir, logger_name, log_level="DEBUG"):
     logger.logger.addHandler(file_handler)
     return logger
 
+def load_config(config_path):
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+    return config
+
+def configure_environment(config_path):
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+
+    # Setup logging
+    log_dir = config["log_dir"]
+    logger = _setup_logging(log_dir, __name__)
+    shutil.copy(config_path, os.path.join(log_dir, os.path.basename(config_path)))
+
+    return config, logger, log_dir
 
 def log_print(message, logger):
     logger.info(message)

@@ -1,7 +1,6 @@
 import copy
 import os
 import random
-import shutil
 import time
 
 import click
@@ -21,11 +20,11 @@ from Modules.diffusion.sampler import ADPM2Sampler, DiffusionSampler, KarrasSche
 from Modules.slmadv import SLMAdversarialLoss
 from optimizers import build_optimizer
 from utils import (
+    configure_environment,
     length_to_mask,
     log_norm,
     maximum_path,
-    recursive_munch,
-    setup_logging,
+    recursive_munch
 )
 
 accelerator = Accelerator()
@@ -43,14 +42,9 @@ class MyDataParallel(torch.nn.DataParallel):
 @click.command()
 @click.option("-p", "--config_path", default="Configs/config_ft.yml", type=str)
 def main(config_path):
-    with open(config_path, "r") as file:
-        config = yaml.safe_load(file)
+    # Load config and set up environment
+    config, logger, log_dir = configure_environment(config_path)
 
-    # Set up logging
-    log_dir = config["log_dir"]
-    logger = setup_logging(log_dir, __name__)
-
-    shutil.copy(config_path, os.path.join(log_dir, os.path.basename(config_path)))
     writer = SummaryWriter(log_dir + "/tensorboard")
 
     batch_size = config.get("batch_size", 10)
