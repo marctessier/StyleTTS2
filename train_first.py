@@ -21,7 +21,6 @@ from utils import (
     get_image,
     length_to_mask,
     log_norm,
-    log_print,
     maximum_path,
     recursive_munch
 )
@@ -287,7 +286,7 @@ def main(config_path):
             iters = iters + 1
 
             if (i + 1) % log_interval == 0 and accelerator.is_main_process:
-                log_print(
+                logger.info(
                     "Epoch [%d/%d], Step [%d/%d], Mel Loss: %.5f, Gen Loss: %.5f, Disc Loss: %.5f, Mono Loss: %.5f, S2S Loss: %.5f, SLM Loss: %.5f"
                     % (
                         epoch + 1,
@@ -300,8 +299,7 @@ def main(config_path):
                         loss_mono,
                         loss_s2s,
                         loss_slm,
-                    ),
-                    logger,
+                    )
                 )
 
                 writer.add_scalar("train/mel_loss", running_loss / log_interval, iters)
@@ -402,8 +400,8 @@ def main(config_path):
 
         if accelerator.is_main_process:
             print("Epochs:", epoch + 1)
-            log_print(
-                "Validation loss: %.3f" % (loss_test / iters_test) + "\n\n\n\n", logger
+            logger.info(
+                "Validation loss: %.3f" % (loss_test / iters_test) + "\n\n\n\n"
             )
             print("\n\n\n")
             writer.add_scalar("eval/mel_loss", loss_test / iters_test, epoch + 1)

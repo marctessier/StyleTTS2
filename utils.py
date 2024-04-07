@@ -83,7 +83,6 @@ def recursive_munch(d):
     else:
         return d
 
-
 def _setup_logging(log_dir, logger_name, log_level="DEBUG"):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
@@ -97,11 +96,6 @@ def _setup_logging(log_dir, logger_name, log_level="DEBUG"):
     logger.logger.addHandler(file_handler)
     return logger
 
-def load_config(config_path):
-    with open(config_path, "r") as file:
-        config = yaml.safe_load(file)
-    return config
-
 def configure_environment(config_path):
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
@@ -112,7 +106,3 @@ def configure_environment(config_path):
     shutil.copy(config_path, os.path.join(log_dir, os.path.basename(config_path)))
 
     return config, logger, log_dir
-
-def log_print(message, logger):
-    logger.info(message)
-    print(message)
