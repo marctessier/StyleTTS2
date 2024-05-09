@@ -87,13 +87,23 @@ def _setup_logging(log_dir, logger_name, log_level="DEBUG"):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
 
+    # Create logger
     logger = get_logger(logger_name, log_level)
+    logger.setLevel(logging.DEBUG)
+
+    # Create handlers for console and log file
+    console_handler = logging.StreamHandler()
     file_handler = logging.FileHandler(os.path.join(log_dir, "train.log"))
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(
-        logging.Formatter("%(levelname)s:%(asctime)s: %(message)s")
-    )
+
+    # Create formatters and add it to handlers
+    formatter = logging.Formatter("%(levelname)s:%(asctime)s: %(message)s")
+    console_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
+    
+    # Add handlers to the logger
+    logger.logger.addHandler(console_handler)
     logger.logger.addHandler(file_handler)
+
     return logger
 
 def configure_environment(config_path):
