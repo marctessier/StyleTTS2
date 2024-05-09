@@ -225,12 +225,8 @@ class Collater(object):
             ref_mels,
         )
 
-def get_dataloaders(
-    dataset_config,
-    batch_size,
-    num_workers,
-    device
-):
+
+def get_dataloaders(dataset_config, batch_size, num_workers, device):
     train_path = dataset_config["train_data"]
     val_path = dataset_config["val_data"]
     min_length = dataset_config["min_length"]
@@ -247,7 +243,7 @@ def get_dataloaders(
         batch_size=batch_size,
         num_workers=num_workers,
         dataset_config={},
-        device=device
+        device=device,
     )
 
     val_dataloader = build_dataloader(
@@ -258,10 +254,11 @@ def get_dataloaders(
         batch_size=batch_size,
         num_workers=num_workers,
         dataset_config={},
-        device=device
+        device=device,
     )
 
     return train_dataloader, val_dataloader, train_list
+
 
 def build_dataloader(
     path_list,

@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from losses import DiscriminatorLoss, GeneratorLoss, MultiResolutionSTFTLoss, WavLMLoss
 from meldataset import get_dataloaders
-from models import build_model,load_checkpoint, load_pretrained_models
+from models import build_model, load_checkpoint, load_pretrained_models
 from Modules.diffusion.sampler import ADPM2Sampler, DiffusionSampler, KarrasSchedule
 from Modules.slmadv import SLMAdversarialLoss
 from optimizers import build_optimizer
@@ -24,7 +24,7 @@ from utils import (
     length_to_mask,
     log_norm,
     maximum_path,
-    recursive_munch
+    recursive_munch,
 )
 
 accelerator = Accelerator()
@@ -63,14 +63,11 @@ def main(config_path):
     device = accelerator.device
 
     # Load the datasets
-    train_dataloader, val_dataloader = get_dataloaders(
-        dataset_config=data_params,
-        batch_size=batch_size,
-        num_workers=2,
-        device=device
+    train_dataloader, val_dataloader, train_list = get_dataloaders(
+        dataset_config=data_params, batch_size=batch_size, num_workers=2, device=device
     )
 
-   # load pretrained models
+    # load pretrained models
     text_aligner, pitch_extractor, plbert = load_pretrained_models(config)
 
     # build model

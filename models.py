@@ -738,6 +738,7 @@ def load_ASR_models(ASR_MODEL_PATH, ASR_MODEL_CONFIG):
 
     return asr_model
 
+
 def load_pretrained_models(config):
     # load pretrained ASR model
     ASR_config = config.get("ASR_config", False)
@@ -753,6 +754,7 @@ def load_pretrained_models(config):
     plbert = load_plbert(BERT_path)
 
     return text_aligner, pitch_extractor, plbert
+
 
 def build_model(args, text_aligner, pitch_extractor, bert):
     assert args.decoder.type in ["istftnet", "hifigan"], "Decoder type unknown"

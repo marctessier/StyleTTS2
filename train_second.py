@@ -23,7 +23,7 @@ from utils import (
     length_to_mask,
     log_norm,
     maximum_path,
-    recursive_munch
+    recursive_munch,
 )
 
 
@@ -63,11 +63,8 @@ def main(config_path):
     device = "cuda"
 
     # Load the datasets
-    train_dataloader, val_dataloader = get_dataloaders(
-        dataset_config=data_params,
-        batch_size=batch_size,
-        num_workers=2,
-        device=device
+    train_dataloader, val_dataloader, train_list = get_dataloaders(
+        dataset_config=data_params, batch_size=batch_size, num_workers=2, device=device
     )
 
     # load pretrained models
