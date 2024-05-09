@@ -124,25 +124,31 @@ def main(config_path):
         _ = [model[key].train() for key in model]
 
         for i, batch in enumerate(train_dataloader):
-            waves = batch[0]
-            batch = [b.to(device) for b in batch[1:]]
-            texts, input_lengths, _, _, mels, mel_input_length, _ = batch
+            optimizer.zero_grad()
+
+            waves, texts, input_lengths, mels, mel_input_length = process_batch(device, batch)
 
             with torch.no_grad():
-                mask = length_to_mask(mel_input_length // (2**n_down)).to("cuda")
+                mel_mask = length_to_mask(mel_input_length // (2**n_down)).to("cuda")
                 text_mask = length_to_mask(input_lengths).to(texts.device)
 
-            ppgs, s2s_pred, s2s_attn = model.text_aligner(mels, mask, texts)
+            '''
+            Use ASR text aligner to get
+            1. ppgs (phoneme posteriorgrams): probability of each phoneme at each time step. used for style encoder?
+            2. s2s_pred: seq2seq prediction: predicted phoneme at each time step. used for text encoder?
+            3. s2s_attn: attention matrix: alignment between text and mel spectrogram. used for style encoder?
+            '''
+            ppgs, s2s_pred, s2s_attn = model.text_aligner(mels, mel_mask, texts)
 
-            s2s_attn = s2s_attn.transpose(-1, -2)
-            s2s_attn = s2s_attn[..., 1:]
-            s2s_attn = s2s_attn.transpose(-1, -2)
+            # Remove the first token from the attention matrix
+            s2s_attn = s2s_attn.transpose(-1, -2)[..., 1:].transpose(-1, -2)
 
+            # Mask the attention matrix
             with torch.no_grad():
                 attn_mask = (
-                    (~mask)
+                    (~mel_mask)
                     .unsqueeze(-1)
-                    .expand(mask.shape[0], mask.shape[1], text_mask.shape[-1])
+                    .expand(mel_mask.shape[0], mel_mask.shape[1], text_mask.shape[-1])
                     .float()
                     .transpose(-1, -2)
                 )
@@ -150,11 +156,10 @@ def main(config_path):
                     attn_mask.float()
                     * (~text_mask)
                     .unsqueeze(-1)
-                    .expand(text_mask.shape[0], text_mask.shape[1], mask.shape[-1])
+                    .expand(text_mask.shape[0], text_mask.shape[1], mel_mask.shape[-1])
                     .float()
                 )
                 attn_mask = attn_mask < 1
-
             s2s_attn.masked_fill_(attn_mask, 0.0)
 
             with torch.no_grad():
@@ -163,7 +168,7 @@ def main(config_path):
                 )
                 s2s_attn_mono = maximum_path(s2s_attn, mask_ST)
 
-            # encode
+            # encode the text
             t_en = model.text_encoder(texts, input_lengths, text_mask)
 
             # 50% of chance of using monotonic version
@@ -173,88 +178,72 @@ def main(config_path):
                 asr = t_en @ s2s_attn_mono
 
             # get clips
-            mel_input_length_all = accelerator.gather(
-                mel_input_length
-            )  # for balanced load
-            mel_len = min(
-                [int(mel_input_length_all.min().item() / 2 - 1), max_len // 2]
-            )
-            mel_len_st = int(mel_input_length.min().item() / 2 - 1)
+            mel_input_length_all = accelerator.gather(mel_input_length)
+            shortest_mel_length = mel_input_length_all.min().item()
+            mel_segment_len = min([int(shortest_mel_length / 2 - 1), max_len // 2])
+            mel_segment_len_style = int(mel_input_length.min().item() / 2 - 1)
 
             en = []
             gt = []
             wav = []
             st = []
 
-            for bib in range(len(mel_input_length)):
-                mel_length = int(mel_input_length[bib].item() / 2)
+            for batch_index in range(len(mel_input_length)):
+                mel_length_halved = int(mel_input_length[batch_index].item() / 2)
 
-                random_start = np.random.randint(0, mel_length - mel_len)
-                en.append(asr[bib, :, random_start : random_start + mel_len])
+                # Extract segments for encoder and ground truth
+                encoder_segment_start_index = np.random.randint(0, mel_length_halved - mel_segment_len)
+                en.append(asr[batch_index, :, encoder_segment_start_index : encoder_segment_start_index + mel_segment_len])
+                ## QUESTION: Why are we taking 2x the mel length?
                 gt.append(
-                    mels[bib, :, (random_start * 2) : ((random_start + mel_len) * 2)]
+                    mels[batch_index, :, (encoder_segment_start_index * 2) : ((encoder_segment_start_index + mel_segment_len) * 2)]
                 )
 
-                y = waves[bib][
-                    (random_start * 2) * 300 : ((random_start + mel_len) * 2) * 300
-                ]
-                wav.append(torch.from_numpy(y).to(device))
+                # Extract corresponding waveform segments
+                waveform_start_index = encoder_segment_start_index * 2 * 300
+                waveform_end_index = (encoder_segment_start_index + mel_segment_len) * 2 * 300
+                waveform_segment = waves[batch_index][waveform_start_index : waveform_end_index]
+                wav.append(torch.from_numpy(waveform_segment).to(device))
 
-                # style reference (better to be different from the GT)
-                random_start = np.random.randint(0, mel_length - mel_len_st)
-                st.append(
-                    mels[bib, :, (random_start * 2) : ((random_start + mel_len_st) * 2)]
-                )
+                # Extract style references (better to be different from the GT)
+                style_segment_start_index = np.random.randint(0, mel_length_halved - mel_segment_len_style)
+                style_segment = mels[batch_index, :, (style_segment_start_index * 2) : ((style_segment_start_index + mel_segment_len_style) * 2)]
+                st.append(style_segment)                   
 
-            en = torch.stack(en)
-            gt = torch.stack(gt).detach()
-            st = torch.stack(st).detach()
+            en = torch.stack(en)                    # text encoder output
+            gt = torch.stack(gt).detach()           # ground truth mel spectrogram
+            st = torch.stack(st).detach()           # style reference mel spectrogram
+            wav = torch.stack(wav).float().detach() # waveform
 
-            wav = torch.stack(wav).float().detach()
-
-            # clip too short to be used by the style encoder
+            # Check if the ground truth segment is too short for style encoding
             if gt.shape[-1] < 80:
-                continue
+                continue    # Skip this iteration if segment is too short
 
+            # Prepare data for model input
             with torch.no_grad():
-                real_norm = log_norm(gt.unsqueeze(1)).squeeze(1).detach()
+                normalized_gt = log_norm(gt.unsqueeze(1)).squeeze(1).detach()
                 F0_real, _, _ = model.pitch_extractor(gt.unsqueeze(1))
+            # Select appropriate input for style encoder based on whether the model is multispeaker
+            style_input = st.unsqueeze(1) if multispeaker else gt.unsqueeze(1)
+            # Encode style
+            style_encoding = model.style_encoder(style_input)
+            # Decode synthesized speech from encoded text, pitch, normalized mel spectrograms, and style encoding
+            ## Question: how is normalized_gt different used as energy?
+            model_output = model.decoder(en, F0_real, normalized_gt, style_encoding)
 
-            s = model.style_encoder(
-                st.unsqueeze(1) if multispeaker else gt.unsqueeze(1)
-            )
+            # Calculate discriminator loss
+            d_loss = discriminator_loss(wav.detach().unsqueeze(1).float(), model_output.detach()).mean() if epoch >= TMA_epoch else 0
 
-            y_rec = model.decoder(en, F0_real, real_norm, s)
-
-            # discriminator loss
-
+            # Calculate generator loss
+            loss_mel = stft_loss(model_output.squeeze(), wav.detach())
+            loss_s2s = loss_mono = loss_gen_all = loss_slm = 0
             if epoch >= TMA_epoch:
-                optimizer.zero_grad()
-                d_loss = discriminator_loss(wav.detach().unsqueeze(1).float(), y_rec.detach()).mean()
-                accelerator.backward(d_loss)
-                optimizer.step("msd")
-                optimizer.step("mpd")
-            else:
-                d_loss = 0
-
-            # generator loss
-            optimizer.zero_grad()
-            loss_mel = stft_loss(y_rec.squeeze(), wav.detach())
-
-            if epoch >= TMA_epoch:  # start TMA training
-                loss_s2s = 0
-                for _s2s_pred, _text_input, _text_length in zip(
-                    s2s_pred, texts, input_lengths
-                ):
-                    loss_s2s += F.cross_entropy(
-                        _s2s_pred[:_text_length], _text_input[:_text_length]
-                    )
+                for _s2s_pred, _text_input, _text_length in zip(s2s_pred, texts, input_lengths):
+                    loss_s2s += F.cross_entropy(_s2s_pred[:_text_length], _text_input[:_text_length])
                 loss_s2s /= texts.size(0)
-
                 loss_mono = F.l1_loss(s2s_attn, s2s_attn_mono) * 10
-
-                loss_gen_all = generator_loss(wav.detach().unsqueeze(1).float(), y_rec).mean()
-                loss_slm = wavlm_loss(wav.detach(), y_rec).mean()
+                loss_gen_all = generator_loss(wav.detach().unsqueeze(1).float(), model_output).mean()
+                loss_slm = wavlm_loss(wav.detach(), model_output).mean()
 
                 g_loss = (
                     loss_params.lambda_mel * loss_mel
@@ -263,22 +252,23 @@ def main(config_path):
                     + loss_params.lambda_gen * loss_gen_all
                     + loss_params.lambda_slm * loss_slm
                 )
-
             else:
-                loss_s2s = 0
-                loss_mono = 0
-                loss_gen_all = 0
-                loss_slm = 0
                 g_loss = loss_mel
 
+            # Accumulate running loss for logging
             running_loss += accelerator.gather(loss_mel).mean().item()
 
+            # Backpropagate losses
+            if epoch >= TMA_epoch:
+                accelerator.backward(d_loss)
             accelerator.backward(g_loss)
 
+            # Update model parameters
+            optimizer.step("msd")
+            optimizer.step("mpd")
             optimizer.step("text_encoder")
             optimizer.step("style_encoder")
             optimizer.step("decoder")
-
             if epoch >= TMA_epoch:
                 optimizer.step("text_aligner")
                 optimizer.step("pitch_extractor")
@@ -322,13 +312,11 @@ def main(config_path):
             for batch_idx, batch in enumerate(val_dataloader):
                 optimizer.zero_grad()
 
-                waves = batch[0]
-                batch = [b.to(device) for b in batch[1:]]
-                texts, input_lengths, _, _, mels, mel_input_length, _ = batch
+                waves, texts, input_lengths, mels, mel_input_length = process_batch(device, batch)
 
                 with torch.no_grad():
-                    mask = length_to_mask(mel_input_length // (2**n_down)).to("cuda")
-                    ppgs, s2s_pred, s2s_attn = model.text_aligner(mels, mask, texts)
+                    mel_mask = length_to_mask(mel_input_length // (2**n_down)).to("cuda")
+                    ppgs, s2s_pred, s2s_attn = model.text_aligner(mels, mel_mask, texts)
 
                     s2s_attn = s2s_attn.transpose(-1, -2)
                     s2s_attn = s2s_attn[..., 1:]
@@ -336,9 +324,9 @@ def main(config_path):
 
                     text_mask = length_to_mask(input_lengths).to(texts.device)
                     attn_mask = (
-                        (~mask)
+                        (~mel_mask)
                         .unsqueeze(-1)
-                        .expand(mask.shape[0], mask.shape[1], text_mask.shape[-1])
+                        .expand(mel_mask.shape[0], mel_mask.shape[1], text_mask.shape[-1])
                         .float()
                         .transpose(-1, -2)
                     )
@@ -346,7 +334,7 @@ def main(config_path):
                         attn_mask.float()
                         * (~text_mask)
                         .unsqueeze(-1)
-                        .expand(text_mask.shape[0], text_mask.shape[1], mask.shape[-1])
+                        .expand(text_mask.shape[0], text_mask.shape[1], mel_mask.shape[-1])
                         .float()
                     )
                     attn_mask = attn_mask < 1
@@ -361,34 +349,33 @@ def main(config_path):
                 mel_input_length_all = accelerator.gather(
                     mel_input_length
                 )  # for balanced load
-                mel_len = min(
+                mel_segment_len = min(
                     [int(mel_input_length.min().item() / 2 - 1), max_len // 2]
                 )
 
                 en = []
                 gt = []
                 wav = []
-                for bib in range(len(mel_input_length)):
-                    mel_length = int(mel_input_length[bib].item() / 2)
+                for batch_index in range(len(mel_input_length)):
+                    mel_length_halved = int(mel_input_length[batch_index].item() / 2)
 
-                    random_start = np.random.randint(0, mel_length - mel_len)
-                    en.append(asr[bib, :, random_start : random_start + mel_len])
+                    encoder_segment_start_index = np.random.randint(0, mel_length_halved - mel_segment_len)
+                    en.append(asr[batch_index, :, encoder_segment_start_index : encoder_segment_start_index + mel_segment_len])
                     gt.append(
                         mels[
-                            bib, :, (random_start * 2) : ((random_start + mel_len) * 2)
+                            batch_index, :, (encoder_segment_start_index * 2) : ((encoder_segment_start_index + mel_segment_len) * 2)
                         ]
                     )
-                    y = waves[bib][
-                        (random_start * 2) * 300 : ((random_start + mel_len) * 2) * 300
+                    waveform_segment = waves[batch_index][
+                        (encoder_segment_start_index * 2) * 300 : ((encoder_segment_start_index + mel_segment_len) * 2) * 300
                     ]
-                    wav.append(torch.from_numpy(y).to("cuda"))
-
-                wav = torch.stack(wav).float().detach()
+                    wav.append(torch.from_numpy(waveform_segment).to("cuda"))
 
                 en = torch.stack(en)
                 gt = torch.stack(gt).detach()
+                wav = torch.stack(wav).float().detach()
 
-                F0_real, _, F0 = model.pitch_extractor(gt.unsqueeze(1))
+                F0_real, _, _ = model.pitch_extractor(gt.unsqueeze(1))
                 s = model.style_encoder(gt.unsqueeze(1))
                 real_norm = log_norm(gt.unsqueeze(1)).squeeze(1)
                 y_rec = model.decoder(en, F0_real, real_norm, s)
@@ -409,10 +396,10 @@ def main(config_path):
             writer.add_figure("eval/attn", attn_image, epoch)
 
             with torch.no_grad():
-                for bib in range(len(asr)):
-                    mel_length = int(mel_input_length[bib].item())
-                    gt = mels[bib, :, :mel_length].unsqueeze(0)
-                    en = asr[bib, :, : mel_length // 2].unsqueeze(0)
+                for batch_index in range(len(asr)):
+                    mel_length_halved = int(mel_input_length[batch_index].item())
+                    gt = mels[batch_index, :, :mel_length_halved].unsqueeze(0)
+                    en = asr[batch_index, :, : mel_length_halved // 2].unsqueeze(0)
 
                     F0_real, _, _ = model.pitch_extractor(gt.unsqueeze(1))
                     F0_real = F0_real.unsqueeze(0)
@@ -422,20 +409,20 @@ def main(config_path):
                     y_rec = model.decoder(en, F0_real, real_norm, s)
 
                     writer.add_audio(
-                        "eval/y" + str(bib),
+                        "eval/y" + str(batch_index),
                         y_rec.cpu().numpy().squeeze(),
                         epoch,
                         sample_rate=sr,
                     )
                     if epoch == 0:
                         writer.add_audio(
-                            "gt/y" + str(bib),
-                            waves[bib].squeeze(),
+                            "gt/y" + str(batch_index),
+                            waves[batch_index].squeeze(),
                             epoch,
                             sample_rate=sr,
                         )
 
-                    if bib >= 6:
+                    if batch_index >= 6:
                         break
 
             if epoch % save_frequency == 0:
@@ -465,6 +452,12 @@ def main(config_path):
             log_dir, config.get("first_stage_path", "first_stage.pth")
         )
         torch.save(state, save_path)
+
+def process_batch(device, batch):
+    waves = batch[0]
+    batch = [b.to(device) for b in batch[1:]]
+    texts, input_lengths, _, _, mels, mel_input_length, _ = batch
+    return waves,texts,input_lengths,mels,mel_input_length
 
 
 if __name__ == "__main__":
