@@ -188,14 +188,10 @@ class DiscriminatorLoss(torch.nn.Module):
     def forward(self, y, y_hat):
         # MPD
         y_df_hat_r, y_df_hat_g, _, _ = self.mpd(y, y_hat)
-        loss_disc_f, _, _ = self._discriminator_loss(
-            y_df_hat_r, y_df_hat_g
-        )
+        loss_disc_f, _, _ = self._discriminator_loss(y_df_hat_r, y_df_hat_g)
         # MSD
         y_ds_hat_r, y_ds_hat_g, _, _ = self.msd(y, y_hat)
-        loss_disc_s, _, _ = self._discriminator_loss(
-            y_ds_hat_r, y_ds_hat_g
-        )
+        loss_disc_s, _, _ = self._discriminator_loss(y_ds_hat_r, y_ds_hat_g)
 
         loss_rel = self._discriminator_TPRLS_loss(
             y_df_hat_r, y_df_hat_g
