@@ -18,6 +18,7 @@ from Modules.discriminators import (
 )
 from Utils.ASR.models import ASRCNN
 from Utils.JDC.model import JDCNet
+from Utils.PLBERT.util import load_plbert
 
 
 class LearnedDownSample(nn.Module):
@@ -736,6 +737,23 @@ def load_ASR_models(ASR_MODEL_PATH, ASR_MODEL_CONFIG):
     _ = asr_model.train()
 
     return asr_model
+
+
+def load_pretrained_models(config):
+    # load pretrained ASR model
+    ASR_config = config.get("ASR_config", False)
+    ASR_path = config.get("ASR_path", False)
+    text_aligner = load_ASR_models(ASR_path, ASR_config)
+
+    # load pretrained F0 model
+    F0_path = config.get("F0_path", False)
+    pitch_extractor = load_F0_models(F0_path)
+
+    # load BERT model
+    BERT_path = config.get("PLBERT_dir", False)
+    plbert = load_plbert(BERT_path)
+
+    return text_aligner, pitch_extractor, plbert
 
 
 def build_model(args, text_aligner, pitch_extractor, bert):

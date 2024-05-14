@@ -1,1 +1,4 @@
+*.nsys-rep
+*.sqlite
 __pycache__
+Models

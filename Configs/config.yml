@@ -1,6 +1,6 @@
 log_dir: "Models/LJSpeech"
 first_stage_path: "first_stage.pth"
-save_freq: 2
+save_freq: 10
 log_interval: 10
 device: "cuda"
 epochs_1st: 200 # number of epochs for first stage training (pre-training)
