@@ -163,7 +163,7 @@ class DiscriminatorLoss(torch.nn.Module):
 
     """ https://dl.acm.org/doi/abs/10.1145/3573834.3574506 """
 
-    def _discriminator_TPRLS_loss(disc_real_outputs, disc_generated_outputs):
+    def _discriminator_TPRLS_loss(self, disc_real_outputs, disc_generated_outputs):
         loss = 0
         for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
             tau = 0.04
@@ -172,7 +172,7 @@ class DiscriminatorLoss(torch.nn.Module):
             loss += tau - F.relu(tau - L_rel)
         return loss
 
-    def _discriminator_loss(disc_real_outputs, disc_generated_outputs):
+    def _discriminator_loss(self, disc_real_outputs, disc_generated_outputs):
         loss = 0
         r_losses = []
         g_losses = []
@@ -188,12 +188,12 @@ class DiscriminatorLoss(torch.nn.Module):
     def forward(self, y, y_hat):
         # MPD
         y_df_hat_r, y_df_hat_g, _, _ = self.mpd(y, y_hat)
-        loss_disc_f, losses_disc_f_r, losses_disc_f_g = self._discriminator_loss(
+        loss_disc_f, _, _ = self._discriminator_loss(
             y_df_hat_r, y_df_hat_g
         )
         # MSD
         y_ds_hat_r, y_ds_hat_g, _, _ = self.msd(y, y_hat)
-        loss_disc_s, losses_disc_s_r, losses_disc_s_g = self._discriminator_loss(
+        loss_disc_s, _, _ = self._discriminator_loss(
             y_ds_hat_r, y_ds_hat_g
         )
 
