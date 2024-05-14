@@ -111,7 +111,7 @@ class GeneratorLoss(torch.nn.Module):
         self.mpd = mpd
         self.msd = msd
 
-    def _feature_loss(fmap_r, fmap_g):
+    def _feature_loss(self, fmap_r, fmap_g):
         loss = 0
         for dr, dg in zip(fmap_r, fmap_g):
             for rl, gl in zip(dr, dg):
@@ -119,7 +119,7 @@ class GeneratorLoss(torch.nn.Module):
 
         return loss * 2
 
-    def _generator_loss(disc_outputs):
+    def _generator_loss(self, disc_outputs):
         loss = 0
         gen_losses = []
         for dg in disc_outputs:
@@ -129,7 +129,7 @@ class GeneratorLoss(torch.nn.Module):
 
         return loss, gen_losses
 
-    def _generator_TPRLS_loss(disc_real_outputs, disc_generated_outputs):
+    def _generator_TPRLS_loss(self, disc_real_outputs, disc_generated_outputs):
         loss = 0
         for dg, dr in zip(disc_real_outputs, disc_generated_outputs):
             tau = 0.04
