@@ -10,6 +10,8 @@ Audio samples: [https://styletts2.github.io/](https://styletts2.github.io/)
 
 Online demo: [Hugging Face](https://huggingface.co/spaces/styletts2/styletts2) (thank [@fakerybakery](https://github.com/fakerybakery) for the wonderful online demo)
 
+Replicate demo:  [![Try a demo on Replicate](https://replicate.com/adirik/styletts2/badge)](https://replicate.com/adirik/styletts2)
+
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yl4579/StyleTTS2/blob/main/) [![Discord](https://img.shields.io/discord/1197679063150637117?logo=discord&logoColor=white&label=Join%20our%20Community)](https://discord.gg/ha8sxdG2K4)
 
 ## TODO
