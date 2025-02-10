@@ -83,7 +83,7 @@ def main(config_path):
                                         OOD_data=OOD_data,
                                         min_length=min_length,
                                         batch_size=batch_size,
-                                        num_workers=2,
+                                        num_workers=1,
                                         dataset_config={},
                                         device=device)
 
